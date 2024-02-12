@@ -6,11 +6,33 @@
     <xacro:unless value="${attach_to == ''}">
       <joint name="${prefix}gripper_fix" type="fixed">
         <parent link="${attach_to}"/>
-        <child link="${prefix}xarm_gripper_base_link"/>
+        <child link="${prefix}kinect_mount"/>
         <origin xyz="${attach_xyz}" rpy="${attach_rpy}"/>
       </joint>
     </xacro:unless>
-
+    <link name="${prefix}kinect_mount">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="0.52" />
+        <inertia
+          ixx="0.00020833" ixy="3.9292E-07" ixz="2.6537E-06"
+          iyy="0.00020833" iyz="-1.0975E-05" izz="0.00020833" />
+      </inertial>
+      <xacro:common_link_visual 
+        mesh_filename="azure_kinect_mount"  
+        origin_xyz="0.08 0 0.013" 
+        origin_rpy="0 0 -1.5708"
+        material_name="${prefix}Silver" />
+      <xacro:common_link_collision 
+        mesh_filename="azure_kinect_mount"  
+        origin_xyz="0.08 0 0.013" 
+        origin_rpy="0 0 -1.5708" />
+    </link>
+    <joint name="${prefix}kinect_joint" type="fixed">
+      <origin xyz="0 0 0.0125" rpy="0 0 0" />
+      <parent link="${prefix}kinect_mount" />
+      <child link="${prefix}xarm_gripper_base_link" />
+    </joint>
     <link name="${prefix}xarm_gripper_base_link">
       <inertial>
         <origin xyz="-0.00065489 -0.0018497 0.048028" rpy="0 0 0" />
