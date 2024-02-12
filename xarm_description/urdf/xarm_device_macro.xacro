@@ -72,11 +72,21 @@
       <link name="world" />
     </xacro:if>
 
-    <joint name="${prefix}world_joint" type="fixed">
-      <parent link="${attach_to}" />
-      <child link="${prefix}link_base" />
-      <origin xyz="${attach_xyz}" rpy="${attach_rpy}" />
-    </joint>
+    <xacro:unless value="${robot_type == 'xarm' and dof == 6}">
+      <joint name="${prefix}world_joint" type="fixed">
+        <parent link="${attach_to}" />
+        <child link="${prefix}link_base" />
+        <origin xyz="${attach_xyz}" rpy="${attach_rpy}" />
+      </joint>
+    </xacro:unless>
+
+    <xacro:if value="${robot_type =='xarm' and dof == 6}">
+      <joint name="${prefix}world_joint" type="fixed">
+        <parent link="world" />
+        <child link="${prefix}linear_direct_motor_base" />
+        <origin xyz="0 0 0.0625" rpy="0 0 0" />
+      </joint>
+    </xacro:if>
 
     <xacro:if value="${effort_control}"> 
       <xacro:property name="hard_interface" value="EffortJointInterface" />
