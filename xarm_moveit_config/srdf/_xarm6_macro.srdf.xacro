@@ -46,21 +46,13 @@
       <joint name="${prefix}joint5" value="0" />
       <joint name="${prefix}joint6" value="0" />
     </group_state>
-    <group_state name="hold-up" group="${prefix}xarm6">
-      <joint name="${prefix}joint1" value="0" />
-      <joint name="${prefix}joint2" value="0" />
-      <joint name="${prefix}joint3" value="0" />
-      <joint name="${prefix}joint4" value="0" />
-      <joint name="${prefix}joint5" value="-1.5708" />
-      <joint name="${prefix}joint6" value="0" />
-    </group_state>
     <group_state name="centre" group="${prefix}xarm6">
       <joint name="${prefix}joint1" value="1.41674" />
       <joint name="${prefix}joint2" value="-0.6318" />
       <joint name="${prefix}joint3" value="-0.24822" />
-      <joint name="${prefix}joint4" value="6.21608" />
+      <joint name="${prefix}joint4" value="0.03" />
       <joint name="${prefix}joint5" value="0.8429123" />
-      <joint name="${prefix}joint6" value="-0.28200" />
+      <joint name="${prefix}joint6" value="-0.1355" />
     </group_state>
     <disable_collisions link1="${prefix}linear_direct_motor_base" link2="${prefix}link_base" reason="Adjacent" />
     <!-- gripper -->

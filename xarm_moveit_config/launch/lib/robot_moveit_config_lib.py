@@ -79,6 +79,7 @@ def get_xarm_robot_description_parameters(
     get_xacro_file_content = getattr(mod, 'get_xacro_file_content')
     
     return {
+        "publish_robot_description_semantic": True,
         'robot_description': get_xacro_file_content(
             xacro_file=xacro_urdf_file, 
             arguments=urdf_arguments
