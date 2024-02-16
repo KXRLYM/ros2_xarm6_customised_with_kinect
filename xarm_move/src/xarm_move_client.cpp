@@ -26,8 +26,11 @@
 
 #include "xarm_api/xarm_ros_client.h"
 
+#include "action_msgs/msg/goal_status_array.hpp"
+
 using namespace std::chrono_literals;
 using std::placeholders::_1;
+
 
 typedef float fp32;
 struct Point {
@@ -36,32 +39,34 @@ struct Point {
     float z;
 };
 
+'''
+This node receives a target point through ROS2 service "get_target_point" and publishes it. 
+Initially using servic was intended such that the target point is only obtained when asked for. 
+Then it publishes that target point to move the robot. 
+Right now, get_target_point is requested in a while loop. See main().
+'''
 class XarmServiceNode : public rclcpp::Node {
-
 private:
     using GetTargetPoint = xarm_msgs::srv::GetTargetPoint;
     using GoalHandle = rclcpp_action::ClientGoalHandle<GetTargetPoint>;
 
     rclcpp::Node::SharedPtr node_handle_;
     rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr publisher_;
-    tf2_ros::Buffer tf_buffer_;
-    tf2_ros::TransformListener tf_listener_;
-
     rclcpp::Client<GetTargetPoint>::SharedPtr client_;
     geometry_msgs::msg::PointStamped target;
 
 public:
     XarmServiceNode() : Node("xarm_service_node"),
     node_handle_(std::shared_ptr<XarmServiceNode>(this, [](auto *){})),    
-    tf_buffer_(this->get_clock()),
-    tf_listener_(tf_buffer_)
     {
+        // create a node, publisher and a service
         RCLCPP_INFO(this->get_logger(), "Starting Xarm Service Node...!!!!!!!!!!!!!!!!!!!!!!!!!!");
         client_ = this->create_client<GetTargetPoint>("get_target_point");
         publisher_ = this->create_publisher<geometry_msgs::msg::PointStamped>("/target_for_execution",10);
         target = geometry_msgs::msg::PointStamped();
     }
     
+    // this function sents a request to obtain a target point to move to. 
     void sendServiceRequest() 
     {
 
@@ -83,6 +88,7 @@ public:
             RCLCPP_ERROR(this->get_logger(), "Failed");
             return;
         } else {
+            // if successfully obtained, publish the point
             target = result.get()->target_point;
             RCLCPP_INFO(this->get_logger(), "publishing target point...");
             publisher_->publish(target);
@@ -98,9 +104,11 @@ public:
 
 };
 
-
+'''
+This node receives the target point and move the robot.
+Receiving the node and moving the robot needed to be in a separate thread (one spinning, one not spinning). 
+'''
 class XarmMoveClientNode : public rclcpp::Node {
-
 private:
 
     using GetTargetPoint = xarm_msgs::srv::GetTargetPoint;
@@ -122,6 +130,7 @@ private:
     rclcpp::Client<GetTargetPoint>::SharedPtr client_;
     rclcpp::TimerBase::SharedPtr timer_;
 
+    rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr goal_subscription_;
     int nothing_count;
 
 public:
@@ -136,17 +145,22 @@ public:
     moveit_visual_tools(node_handle_, "link1", rviz_visual_tools::RVIZ_MARKER_TOPIC, move_group_interface.getRobotModel()),
     nothing_count(0)
     {
-
+        // empty the rviz space
         moveit_visual_tools.deleteAllMarkers();
         moveit_visual_tools.loadRemoteControl();
         RCLCPP_INFO(this->get_logger(), "Starting Xarm Move Client Node...");
 
+        // this is not used right now. Planned to use it for overriding the current trajectory with "stop"
+        goal_subscription_ = this->create_subscription<action_msgs::msg::GoalStatusArray>("/xarm6_traj_controller/follow_joint_trajectory/_action/status", 10, std::bind(&XarmMoveClientNode::goalCallback, this, _1));
+        
+        // populate the rviz workspace with a table
         removeAllCollisionObjects();
 
         addCollisionObject();
 
         xarm_ros_client_.init(node_handle_, "xarm");
         
+        // testing gripper connection + get a position
         fp32 gripper_position;
         int result = xarm_ros_client_.get_gripper_position(&gripper_position);
         if (result == 0) {
@@ -158,17 +172,21 @@ public:
         client_ = this->create_client<GetTargetPoint>("get_target_point");
 
         subscription_ = this->create_subscription<geometry_msgs::msg::PointStamped>("/target_for_execution", 10, std::bind(&XarmMoveClientNode::executionCallBack, this, _1));
+    }
 
+    void goalCallback(const action_msgs::msg::GoalStatusArray msg) {
+        RCLCPP_INFO(this->get_logger(), "received something................");
     }
 
     void executionCallBack(const geometry_msgs::msg::PointStamped target_point) {
-
+        // target point is always received. if it is zero, human hand is detected
         if (target_point.point.x + target_point.point.y + target_point.point.z < -0.1) {
             // hand is detected
             RCLCPP_ERROR(this->get_logger(), "HAND DETECTED, NOT MOVING");
             return;
         }
 
+        // thread handling. In order to move the robot, a new thread needs to be created
         if (is_joinable_) {
             execution_thread_.join();
         }
@@ -177,31 +195,30 @@ public:
             RCLCPP_INFO(this->get_logger(), "creating a thread");
             execution_thread_ = std::thread(&XarmMoveClientNode::execute, this, target_point);
         }
-
-        //while(is_thread_running_ && rclcpp::ok()) {
-        //}
-
-        RCLCPP_INFO(this->get_logger(), "thread is finished!");
-
-        //execution_thread_.join();       
+        RCLCPP_INFO(this->get_logger(), "thread is finished!");   
     }
 
+    // thread starts here. The goal is to move the robot to the target point. 
     int execute(const geometry_msgs::msg::PointStamped& target_point)
         {
             is_joinable_ = false;
             RCLCPP_INFO(this->get_logger(), "starting executor!");
             auto const logger = rclcpp::get_logger("xarm_move_client_node");
 
+            // setting the goal tolerances
             move_group_interface.startStateMonitor();
             move_group_interface.setPlanningTime(3.0);
             move_group_interface.setGoalJointTolerance(0.03);
             move_group_interface.setGoalPositionTolerance(0.001);
             move_group_interface.setGoalOrientationTolerance(0.005); 
+
+            // Initialise a target pose transformation. Depth camera link to world so that the robot knows where to move to in the world frame. 
             auto current_pose = move_group_interface.getCurrentPose();
             float x, y, z;
             geometry_msgs::msg::PointStamped point_in = geometry_msgs::msg::PointStamped();
             geometry_msgs::msg::PointStamped point_out;
 
+            // when target point is -1 -1 -1, nothing is detected. If that happens over 5 loop iterations according to 'nothing_count', the robot moves to a default position (hardcoded)
             if (target_point.point.x + target_point.point.y + target_point.point.z < 0.001 && -0.001 < target_point.point.x + target_point.point.y + target_point.point.z ) {
                 // nothing is detected
                 if (nothing_count < 5) {
@@ -214,10 +231,12 @@ public:
                 nothing_count = 0;
                 RCLCPP_INFO(this->get_logger(), "Nothing detected! gotta go home");
                 point_out = geometry_msgs::msg::PointStamped();
+                // hardcoded default position
                 point_out.point.x = 0.032821;
                 point_out.point.y = 0.270264;
                 point_out.point.z = 0.24;
             } else {
+                // if some object is detected. Then do transformation then move the robot arm. 
                 nothing_count = 0;
                 x = target_point.point.x;
                 y = target_point.point.y;
@@ -268,6 +287,7 @@ public:
                 auto const [success, plan] = [&, move_group_interface = std::ref(this->move_group_interface)]() mutable {
                 moveit::planning_interface::MoveGroupInterface::Plan msg;
                 
+                // Constraint is used to ensure the robot arm orientation doesn't deviate too much from the initial orientation. 
                 moveit_msgs::msg::OrientationConstraint orientation_constraint;
                 orientation_constraint.header.frame_id = move_group_interface.get().getPoseReferenceFrame();
                 orientation_constraint.link_name = move_group_interface.get().getEndEffectorLink();
@@ -312,7 +332,7 @@ public:
         }
     }
     
-
+    // Remove all objects from the current scene
     void removeAllCollisionObjects()
     {
         std::vector<std::string> object_ids;
@@ -331,6 +351,7 @@ public:
         }
     }
 
+    // Add collision object. Used to add a table. Dimension is hardcoded.
     void addCollisionObject()
     {
         moveit_msgs::msg::CollisionObject desk;
@@ -357,6 +378,7 @@ public:
         std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
         collision_objects.push_back(desk);
         planning_scene_interface.addCollisionObjects(collision_objects);
+
         /** to do later: disable collision between slider_link and the desk.
         robot_model_loader::RobotModelLoader::Options options("","");
         robot_model_loader::RobotModelLoader robot_model_loader(node_handle_, options);
@@ -370,6 +392,8 @@ public:
         collision_detection::AllowedCollisionMatrix acm = planning_scene->getAllowedCollisionMatrix();
         acm.setEntry("desk1", "slider_link", true);
         **/
+
+        // wait till the object is loaded.
         sleep(2.0);
     }
 

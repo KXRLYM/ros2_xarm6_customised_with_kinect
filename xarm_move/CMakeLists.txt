@@ -21,9 +21,10 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(xarm_msgs REQUIRED)
+find_package(action_msgs REQUIRED)
 
 add_executable(xarm_move_client src/xarm_move_client.cpp)
-ament_target_dependencies(xarm_move_client xarm_msgs yolov8_msgs geometry_msgs rclcpp moveit_core moveit_msgs moveit_ros_planning_interface moveit_ros_planning moveit_kinematics moveit_visual_tools xarm_api xarm_msgs tf2_ros tf2_geometry_msgs)
+ament_target_dependencies(xarm_move_client action_msgs xarm_msgs yolov8_msgs geometry_msgs rclcpp moveit_core moveit_msgs moveit_ros_planning_interface moveit_ros_planning moveit_kinematics moveit_visual_tools xarm_api xarm_msgs tf2_ros tf2_geometry_msgs)
 
 target_link_libraries(xarm_move_client
   ${rclcpp_LIBRARIES}
